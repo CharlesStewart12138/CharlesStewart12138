@@ -1,0 +1,40 @@
+%this code support Chinese character. Please confirm that you use XelaLatex or LuaLatex instead of PDFLatex
+%Document page settings
+\documentclass[10pt,a4paper]{ctexart}                                        %This is the basic setting with Used to set the font size and paper size (the default font size is generally 12pt)
+\usepackage[left=18mm,right=18mm,top=18mm,bottom=20mm]{geometry}             %Set page margins
+\renewcommand{\baselinestretch}{1.5}                                         %Set the line spacing, {} is the multiple
+
+
+%Introduction of macro packages
+\usepackage{titlesec}                                                        %Format chapter titles
+\usepackage{amsmath}                                                         %The following three lines are settings for mathematical tools, such as formulas and mathematical symbol insertion. 
+                                                                             %These three macro packages are compatible with formulas supported by general mathtype and latex. However, if you only install amsmath, some symbols, such as '≥', may not be available.
+\usepackage{amssymb}
+\usepackage{pifont}
+\usepackage{booktabs}                                                        %to create tables in latex
+\usepackage{caption}
+
+%define environment, which means you can create your own instruction as the format below
+\newtheorem{definition}{Def}                                                 %this part difine the definition part 
+\newtheorem{theorem}{定理}[section]                                          %this part difine the theorem part 
+
+% Title setting
+\title{\heiti\bfseries\fontsize{18pt}{14.4pt}\selectfont This is your title}
+
+\date{}
+
+% Customize chapter title format
+\titleformat{\section}{\centering\heiti\bfseries\fontsize{10.5pt}{10.6pt}\selectfont}{第\,\thesection\,章}{1em}{}
+\titleformat{\subsection}{\centering\kaishu\fontsize{10pt}{10pt}\selectfont}{第\,\thesubsection\,节}{1em}{}
+\titleformat{\subsubsection}{\flushleft\heiti\bfseries\fontsize{10pt}{10pt}\selectfont}{\thesubsubsection}{1em}{}
+
+% Shorten the space between chapter titles
+\titlespacing*{\section}{0cm}{*0.5}{*0.5}
+\titlespacing*{\subsection}{0cm}{*0.5}{*0.5}
+\titlespacing*{\subsubsection}{0cm}{*0.5}{*0.5}
+
+%Formula automatic numbering
+\numberwithin{equation}{section}
+
+%%Notice: if you want to create the formula number automatically, please use the environment \begin{equation} and latex will create the number according to your chapter title format. 
+%%For those formulas which are not so important that you don't want to give a number to it, please use $$ or [\. Remember Latex wont identify the title you create by text such as \noindent\textbf{}
