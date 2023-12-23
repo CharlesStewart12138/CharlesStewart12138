@@ -269,8 +269,11 @@ def main():
             hamiltonian = build_hamiltonian(m, g, num_qubits)
             hamiltonians.append(hamiltonian)
             initial_state = Statevector.from_label('0' * num_qubits).data
-            optimized_params = model.predict(initial_state.reshape(1, -1))
-            states, fidelities, params = time_evolution(hamiltonian, '0' * num_qubits, time_steps, dt, num_qubits, optimized_params[0])
+            # 将初始状态转换为实数并调整形状
+            initial_state_real = np.abs(initial_state).reshape(1, -1)
+            # 获取优化后的参数（动作）
+            action, _ = model.predict(initial_state_real)
+            states, fidelities, params = time_evolution(hamiltonian, '0' * num_qubits, time_steps, dt, num_qubits, action)
             states_list.append(states)
             all_fidelities.extend(fidelities)
             all_params.extend(params)
@@ -279,4 +282,5 @@ def main():
     plot_fidelity_vs_params(all_fidelities, all_params)
 
 main()
+
     
