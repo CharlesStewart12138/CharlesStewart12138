@@ -37,10 +37,9 @@ def gaussian_pulse(t, A, mu, sigma, f, phi):
     return A * np.exp(-((t - mu) ** 2) / (2 * sigma ** 2)) * np.cos(2 * np.pi * f * t + phi)
 
 # 时间演化函数（含量子电路构建）
-def time_evolution(hamiltonian, initial_state, steps, interval, num_qubits, pulse_params):
+def time_evolution(hamiltonian, initial_state, steps, interval, num_qubits, action, noise_strength=0.02):
     states = []
     fidelities = []  # 用于存储每个步骤的保真度
-    params = []  # 用于存储每个步骤的参数
     backend = Aer.get_backend('statevector_simulator')
     evolution_circuit = QuantumCircuit(num_qubits)
 
@@ -56,10 +55,16 @@ def time_evolution(hamiltonian, initial_state, steps, interval, num_qubits, puls
         temp_circuit.append(evolution_operator, range(num_qubits))
 
         # 应用高斯脉冲
-        A, mu, sigma, f, phi = pulse_params
-        pulse = gaussian_pulse(step, A, mu, sigma, f, phi)
         for qubit in range(num_qubits):
-            temp_circuit.rx(pulse[qubit], qubit)
+            # 确保 action 数组长度正确
+            A, mu, sigma, f, phi = action[qubit*5:(qubit+1)*5]
+            pulse = gaussian_pulse(step, A, mu, sigma, f, phi)
+            temp_circuit.rx(pulse, qubit)
+
+            # 添加噪声：对每个量子比特应用小的随机旋转
+            temp_circuit.rx(noise_strength * np.random.randn(), qubit)
+            temp_circuit.ry(noise_strength * np.random.randn(), qubit)
+            temp_circuit.rz(noise_strength * np.random.randn(), qubit)
 
         transpiled_circuit = transpile(temp_circuit, backend)
         job = execute(transpiled_circuit, backend)
@@ -68,17 +73,16 @@ def time_evolution(hamiltonian, initial_state, steps, interval, num_qubits, puls
         states.append(state)
         evolution_circuit = temp_circuit
 
-        # 记录保真度和参数
+        # 记录保真度
         fidelity = state_fidelity(Statevector.from_label('0' * num_qubits), state)
         fidelities.append(fidelity)
-        params.append([A, mu, sigma, f, phi])
 
-    return states, fidelities, params
+    return states, fidelities
+
 
 # 绘图函数
-def plot_graphs(states_list, hamiltonians, masses, couplings):
+def plot_graphs(states_list, hamiltonians, masses, couplings, num_qubits, dt):
     fig, axs = plt.subplots(5, 1, figsize=(10, 20))
-    # 对每个子图应用相同的横纵比例
 
     # 绘制哈密顿量演化图
     for hamiltonian, m, g in zip(hamiltonians, masses, couplings):
@@ -137,17 +141,16 @@ def plot_graphs(states_list, hamiltonians, masses, couplings):
     axs[3].set_title('Energy Evolution')
     axs[3].legend()
 
-    #绘制保真度的演化图
+    # 绘制保真度的演化图
     for states, m, g in zip(states_list, masses, couplings):
         time_points = np.arange(len(states))
         initial_state = states[0]
         fidelities = [state_fidelity(initial_state, state) for state in states]
-        # 使用插值使曲线更光滑
         f_interp = interp1d(time_points, fidelities, kind='cubic')
         smooth_time_points = np.linspace(time_points.min(), time_points.max(), 500)
         smooth_fidelities = f_interp(smooth_time_points)
         axs[4].plot(smooth_time_points, smooth_fidelities, linestyle='-.', linewidth=1, label=f'm={m}, g={g}')
-        axs[4].scatter(time_points, fidelities, s=10)  # 添加原始数据点
+        axs[4].scatter(time_points, fidelities, s=10)
     axs[4].set_xlabel('Time Step')
     axs[4].set_ylabel('Fidelity')
     axs[4].set_title('Fidelity Evolution')
@@ -155,6 +158,7 @@ def plot_graphs(states_list, hamiltonians, masses, couplings):
 
     plt.tight_layout()
     plt.show()
+
 
 
 # 绘制保真度随参数变化的图表
@@ -192,7 +196,6 @@ def plot_fidelity_vs_params(fidelities, params):
     plt.tight_layout()
     plt.show()
 
-# 强化学习环境
 class QuantumCircuitEnv(gym.Env):
     def __init__(self, num_qubits, time_steps, dt, masses, couplings):
         super(QuantumCircuitEnv, self).__init__()
@@ -201,19 +204,23 @@ class QuantumCircuitEnv(gym.Env):
         self.dt = dt
         self.masses = masses
         self.couplings = couplings
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(5 * num_qubits,), dtype=np.float32)
+        # 每个量子比特有5个动作参数
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(num_qubits, 5), dtype=np.float32)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2**num_qubits,), dtype=np.float32)
         self.state = None
         self.hamiltonian = None
         self.target_state = Statevector.from_label('0' * num_qubits)
 
     def step(self, action):
-        # 解析动作
-        A, mu, sigma, f, phi = np.split(action, 5)
-        # 应用高斯脉冲
+        # 确保动作数组具有正确的结构
+        if action.shape != (self.num_qubits, 5):
+            raise ValueError(f"Expected action array of shape ({self.num_qubits}, 5), but got {action.shape}")
+
+        # 解析动作并应用
         U = np.eye(2**self.num_qubits, dtype=complex)
         for qubit in range(self.num_qubits):
-            pulse = gaussian_pulse(np.arange(self.time_steps), A[qubit], mu[qubit], sigma[qubit], f[qubit], phi[qubit])
+            A, mu, sigma, f, phi = action[qubit]
+            pulse = gaussian_pulse(np.arange(self.time_steps), A, mu, sigma, f, phi)
             for t in range(self.time_steps):
                 U = np.dot(scipy.linalg.expm(-1j * self.hamiltonian * self.dt * pulse[t]), U)
 
@@ -245,6 +252,7 @@ class QuantumCircuitEnv(gym.Env):
             raise NotImplementedError()
         print(f"Current state: {self.state}")
 
+
 # 主程序
 def main():
     num_qubits = 4
@@ -269,18 +277,22 @@ def main():
             hamiltonian = build_hamiltonian(m, g, num_qubits)
             hamiltonians.append(hamiltonian)
             initial_state = Statevector.from_label('0' * num_qubits).data
-            # 将初始状态转换为实数并调整形状
             initial_state_real = np.abs(initial_state).reshape(1, -1)
-            # 获取优化后的参数（动作）
+
+            # 生成整体动作数组
             action, _ = model.predict(initial_state_real)
-            states, fidelities, params = time_evolution(hamiltonian, '0' * num_qubits, time_steps, dt, num_qubits, action)
+            action = action.reshape(num_qubits, 5)
+
+            states, fidelities = time_evolution(hamiltonian, '0' * num_qubits, time_steps, dt, num_qubits, action.flatten())
             states_list.append(states)
             all_fidelities.extend(fidelities)
-            all_params.extend(params)
+            for a in action:
+                all_params.append(tuple(a))
 
-    plot_graphs(states_list, hamiltonians, masses, couplings, num_qubits)
+    plot_graphs(states_list, hamiltonians, masses, couplings, num_qubits,dt)
     plot_fidelity_vs_params(all_fidelities, all_params)
 
-main()
+if __name__ == "__main__":
+    main()
 
     
