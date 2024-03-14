@@ -132,3 +132,32 @@ def take_action(self, state):
     action_probabilities = F.softmax(actions_value, dim=-1).detach().numpy()[0]
     action = np.random.choice(np.arange(self.n_actions), p=action_probabilities)
     return action
+#获取每个状态对应的最大的state_value
+def max_q_value(self, state):
+    state = torch.tensor(state, dtype=torch.float).view(1,-1)
+    max_q = self.q_net(state).max().item()
+    return max_q
+#网络训练
+def update(self, transitions_dict):
+    states = torch.tensor(transitions_dict['states'], dtype=torch.float)                          #加载当前状态
+    actions = torch.tensor(transitions_dict['actions'], dtype=torch.int64).view(-1,1)             #加载当前状态的动作
+    rewards = torch.tensor(transitions_dict['rewards'], dtype=torch.float).view(-1,1)             #选择当前动作的奖励
+    next_states = torch.tensor(transitions_dict['next_states'], dtype=torch.float)                #加载下一个状态
+      
+    dones = torch.tensor(transitions_dict['dones'], dtype=torch.float).view(-1,1)                 #是否达到目标？
+    q_values = self.q_net(states).gather(1, actions)                                              #当前状态下选择某动作的奖励值
+    max_action = self.q_net(next_states).max(1)[1].view(-1,1)                                     #获取最大奖励值机器动作索引
+    max_next_q_values = self.target_q_net(next_states).gather(1, max_action)                      #下个状态的state_value。下一时刻的状态输入到目标网络，得到每个动作对应的奖励，使用训练出来的action索引选取最优动作
+    q_targets = rewards + self.gamma * max_next_q_values * (1-dones)                              # 目标网络计算出的，当前状态的state_value
+    #定义损失函数
+    dqn_loss = torch.mean(F.mse_loss(q_values, q_targets))
+    # 梯度清零和梯度翻转，更新训练参数
+    self.optimizer.zero_grad()
+    dqn_loss.backward()
+    self.optimizer.step()
+ 
+    # 更新目标网络参数
+    if self.count % self.target_update == 0:
+        self.target_q_net.load_state_dict(
+            self.q_net.state_dict())  
+    self.count += 1
